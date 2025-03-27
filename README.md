@@ -8,7 +8,7 @@ This repository contains the work for the **Final Project** in our deep learning
 The repository is organized as follows:
 
 ```
-Final-Project-X/
+Final-Project-11/
 │
 ├── Proposal/
 │   └── Proposal document outlining the project goals, methods, and approach.
@@ -36,7 +36,7 @@ Final-Project-X/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/Final-Project-X.git
+   git clone https://github.com/casager/Final-Project-11.git
    cd Final-Project-X
    ```
 
@@ -74,12 +74,6 @@ The performance of the model will be evaluated using the following metrics:
 - **Signal-to-Noise Ratio (SNR)**: Evaluates the quality of the audio waveform generated from the spectrogram.
 - **Mean Opinion Score (MOS)**: Subjective evaluation of speech quality based on listener preferences.
 - **Perceptual Evaluation of Speech Quality (PESQ)**: An objective metric for assessing the perceptual quality of the generated speech.
-
-## Contributors
-
-- **FirstName LastName** (Group Member 1)
-- **FirstName LastName** (Group Member 2)
-- **FirstName LastName** (Group Member 3)
 
 ## License
 
