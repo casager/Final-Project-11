@@ -7,18 +7,6 @@ This repository contains the work for the **Final Project** in our deep learning
 
 The repository is organized as follows:
 
-Certainly! Below is the full content of your `README.md` file, including the structure of the repository and how to use it.
-
-```markdown
-# Final Project - Text-to-Speech Synthesis
-
-## Overview
-This repository contains the work for the **Final Project** in our deep learning course. The project aims to develop a custom **Text-to-Speech (TTS)** model. The focus is on training a **Text-to-Spectrogram Conversion Model** using a **combination of LSTM and CNN** networks to generate mel-spectrograms from text input. A pre-built vocoder is used on the backend for generating audio from the spectrograms.
-
-## Repository Structure
-
-The repository is organized as follows:
-
 ```
 Final-Project-X/
 │
