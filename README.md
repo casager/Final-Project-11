@@ -20,13 +20,8 @@ Final-Project-X/
 │   └── Final presentation slides.
 │
 ├── Code/
-│   └── The code for training the Text-to-Spectrogram model, including scripts for training, preprocessing, and evaluation.
-│
-└── first-name-last-name-individual-project/
-    ├── Individual-Final-Project-Report/
-    │   └── The report detailing the individual contribution of the group member.
-    └── Code/
-        └── Code specific to the individual’s contribution to the project.
+    └── The code for training the Text-to-Spectrogram model, including scripts for training, preprocessing, and evaluation.
+
 ```
 
 ## Folder Descriptions
@@ -38,7 +33,7 @@ Final-Project-X/
 - **first-name-last-name-individual-project/**: Each group member will have a folder containing their individual contributions.
   - **Individual-Final-Project-Report/**: Contains the individual’s final report detailing their contributions to the project.
   - **Code/**: Contains any code specific to the individual’s contribution, such as experimental setups or custom modules.
-
+<!--
 ## How to Use the Code
 
 1. **Clone the repository:**
@@ -97,7 +92,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This work is based on the **LJSpeech** dataset, which is publicly available and widely used for training text-to-speech models. We would also like to acknowledge the researchers whose papers and pre-existing models have contributed to the development of this project.
 ```
 
-### Additional Notes:
+## Additional Notes:
 1. **Dependencies**: Make sure to include a `requirements.txt` in your repository, which lists the necessary libraries (e.g., `torch`, `librosa`, etc.).
    
 2. **Training Script**: The `train.py` script should contain the code to load the dataset, preprocess it, and train the model. Similarly, `evaluate.py` will handle model evaluation, and `generate_spectrogram.py` will allow users to input text and generate the corresponding mel-spectrogram.
@@ -109,3 +104,4 @@ This work is based on the **LJSpeech** dataset, which is publicly available and 
 5. **License**: If you are using any pre-built models or datasets that have specific licensing requirements, make sure to mention it in the **Acknowledgements** or **License** section.
 
 Now, you can proceed with creating the repository, pushing the code and this README file, and sharing it with your collaborators.
+-->
