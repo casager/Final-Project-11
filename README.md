@@ -19,7 +19,7 @@ Final-Project-X/
 ├── Final-Presentation/
 │   └── Final presentation slides.
 │
-├── Code/
+└── Code/
     └── The code for training the Text-to-Spectrogram model, including scripts for training, preprocessing, and evaluation.
 
 ```
@@ -30,9 +30,7 @@ Final-Project-X/
 - **Final-Group-Project-Report/**: Contains the final report summarizing the work done by the group, including model architecture, results, and conclusions.
 - **Final-Presentation/**: Contains the slides for the final presentation given at the end of the course.
 - **Code/**: Contains the code for training the Text-to-Spectrogram model, including scripts for data preprocessing, model training, and evaluation.
-- **first-name-last-name-individual-project/**: Each group member will have a folder containing their individual contributions.
-  - **Individual-Final-Project-Report/**: Contains the individual’s final report detailing their contributions to the project.
-  - **Code/**: Contains any code specific to the individual’s contribution, such as experimental setups or custom modules.
+
 <!--
 ## How to Use the Code
 
