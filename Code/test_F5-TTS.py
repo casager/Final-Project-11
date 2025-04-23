@@ -8,6 +8,8 @@ import subprocess
 import whisper
 import argparse
 
+os.chdir("../../F5-TTS")
+
 # Hardcoded parameters
 AUDIO_FILE = "sample.wav"  # Change this to your audio file path
 OUTPUT_FILE = "cloned_output.wav"  # Change this to your desired output path
