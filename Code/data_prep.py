@@ -3,16 +3,16 @@ import pandas as pd
 
 # Clone the SEP-28k repository 
 # Comment this out after data available
-os.system("git clone https://github.com/apple/ml-stuttering-events-dataset.git")
-os.chdir("ml-stuttering-events-dataset")
+# os.system("git clone https://github.com/apple/ml-stuttering-events-dataset.git")
+# os.chdir("ml-stuttering-events-dataset")
 
-# Download the audio data
-os.system("python3 download_audio.py --episodes SEP-28k_episodes.csv --wavs data/wavs")
-os.system("python3 extract_clips.py --labels SEP-28k_labels.csv --wavs data/wavs --clips data/clips")
+# # Download the audio data
+# os.system("python3 download_audio.py --episodes SEP-28k_episodes.csv --wavs data/wavs")
+# os.system("python3 extract_clips.py --labels SEP-28k_labels.csv --wavs data/wavs --clips data/clips")
 
-# Also get FluencyBank data
-os.system("python3 download_audio.py --episodes fluencybank_episodes.csv --wavs data/wavs")
-os.system("python3 extract_clips.py --labels fluencybank_labels.csv --wavs data/wavs --clips data/clips_fluencybank")
+# # Also get FluencyBank data
+# os.system("python3 download_audio.py --episodes fluencybank_episodes.csv --wavs data_FB/wavs")
+# os.system("python3 extract_clips.py --labels fluencybank_labels.csv --wavs data/wavs --clips data_FB/clips_fluencybank")
 
 def prepare_fine_tuning_data():
     """

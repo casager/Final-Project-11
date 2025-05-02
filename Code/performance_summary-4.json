@@ -1,0 +1,13 @@
+{
+  "base_model": {
+    "test_wer": 0.3673705047838997
+  },
+  "fine_tuned_model": {
+    "validation_wer": 0.24992310058443556,
+    "test_wer": 0.18970636753546685
+  },
+  "improvement": {
+    "absolute": 0.17766413724843286,
+    "relative": 48.361023798832505
+  }
+}

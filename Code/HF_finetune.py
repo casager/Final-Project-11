@@ -1,6 +1,7 @@
 from datasets import Dataset
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+import whisper
 
 def fine_tune_whisper(dataset):
     """

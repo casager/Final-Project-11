@@ -1,101 +1,181 @@
-# Install F5TTS - comment this out later
-# os.system("git clone https://github.com/SWivid/F5-TTS.git")
-# os.chdir("F5-TTS")
-# os.system("pip install -e .")
+#!/usr/bin/env python3
+"""
+Simple test script for voice cloning with F5TTS and Fine-tuned Whisper.
+"""
 
-import subprocess
 import os
-from pathlib import Path
+import subprocess
+import whisper
+import argparse
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
+import librosa
+import torch
+from whisper_utils import setup_whisper, transcribe_audio
+import soundfile as sf  # Add this import at the top with your other imports
+import pandas as pd
+from pydub import AudioSegment
 
-def setup_f5tts():
-    """
-    Setup the F5TTS environment.
-    """
-    # Check if the model directory exists, if not create it
-    if not os.path.exists("models"):
-        os.makedirs("models")
+
+# Change to F5-TTS directory
+os.chdir("../../F5-TTS")
+FILE_PREFIX="24fa_000"
+# FILE_PREFIX="37m_012"
+
+# Hardcoded parameters
+AUDIO_FILE = f"/home/ubuntu/TimeStamped-wav/combined_wavs/{FILE_PREFIX}_combined.wav"  # Using original wave with stutters for audio ref.
+# AUDIO_FILE = f"/home/ubuntu/TimeStamped-wav/original_wavs/{FILE_PREFIX}.wav"
+REF_CSV = f"/home/ubuntu/TimeStamped/combined_csvs/{FILE_PREFIX}_combined.csv"
+OUTPUT_FILE = f"/home/ubuntu/Final-Project-11/Code/Audio-Samples/project_audio/{FILE_PREFIX}_cloned.wav"
+TEXT_FILE = "/home/ubuntu/Final-Project-11/Code/Audio-Samples/custom_text.txt"
+FINE_TUNED_MODEL_PATH = "/home/ubuntu/Final-Project-11/Code/whisper-fine-tuned-stuttering-final-4"  # Path to your fine-tuned model
+
+def load_text_from_file(file_path):
+    try:
+        with open(file_path, "r") as f:
+            return f.read().strip()
+    except Exception as e:
+        print(f"Error reading text file: {e}")
+        return None
     
-    # Download the F5TTS_v1_Base model if not already present
-    if not os.path.exists("models/F5TTS_v1_Base"):
-        print("Downloading F5TTS model...")
-        # You would need to manually download the model from the official source
-        # This is just a placeholder - the actual command depends on where the model is hosted
-        # os.system("wget [model_url] -O models/F5TTS_v1_Base.zip")
-        # os.system("unzip models/F5TTS_v1_Base.zip -d models/")
-    
-    return True
+CUSTOM_TEXT = load_text_from_file(TEXT_FILE)
 
+def append_silence_to_audio(file_prefix, silence_duration_ms=1000):
+    """Appends silence to the end of the given audio and saves to silenced_wavs."""
+    input_path = f"/home/ubuntu/TimeStamped-wav/combined_wavs/{file_prefix}_combined.wav"
+    output_path = f"/home/ubuntu/TimeStamped-wav/silenced_wavs/{file_prefix}_combined_silenced.wav"
 
-def clone_voice_and_generate_speech_optimized(reference_audio, fine_tuned_whisper_model, output_path="output.wav"):
+    audio = AudioSegment.from_wav(input_path)
+    silence = AudioSegment.silent(duration=silence_duration_ms)
+    audio_with_silence = audio + silence
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)  # Ensure output dir exists
+    audio_with_silence.export(output_path, format="wav")
+
+    return output_path
+
+def load_fine_tuned_whisper(model_path):
+    """Load the fine-tuned Whisper model."""
+    print(f"Loading fine-tuned Whisper model from {model_path}...")
+    processor = WhisperProcessor.from_pretrained(model_path)
+    model = WhisperForConditionalGeneration.from_pretrained(model_path)
+    return processor, model
+
+def transcribe_with_base_model(model, audio_file):
     """
-    Clone a voice from a reference audio file and generate fluent speech using a fine-tuned Whisper model.
+    Transcribe an audio file using Whisper.
     
     Args:
-        reference_audio: Path to the reference audio file for voice cloning
-        fine_tuned_whisper_model: The fine-tuned Whisper model for stuttering
-        output_path: Path to save the generated audio
+        model: The loaded Whisper model
+        audio_file: Path to the audio file
     
     Returns:
-        Path to the generated audio file and the fluent text
+        The transcribed text
     """
+    # Transcribe the audio file
+    result = model.transcribe(audio_file)
+    return result["text"]
+
+def transcribe_with_fine_tuned_whisper(processor, model, audio_file):
+    """Transcribe audio using the fine-tuned Whisper model."""
+    # Load and preprocess audio
+    audio, sr = librosa.load(audio_file, sr=16000)
+    
+    # Process audio for input
+    input_features = processor(audio, sampling_rate=sr, return_tensors="pt").input_features
+    
+    # Clear the forced_decoder_ids and set language and task
+    model.generation_config.forced_decoder_ids = None
+
+    # Generate transcription
+    predicted_ids = model.generate(
+        input_features,
+        language='en',
+        task='transcribe',
+        use_cache=True
+    )
+    
+    transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+    return transcription
+
+def test_voice_cloning(reference_audio, output_file=None, custom_text=None):
+    """Test voice cloning with F5TTS using fine-tuned Whisper."""
+    # Set default output path if not provided
+    if not output_file:
+        dir_name = os.path.dirname(os.path.abspath(reference_audio))
+        base_name = os.path.splitext(os.path.basename(reference_audio))[0]
+        output_file = os.path.join(dir_name, f"{base_name}_cloned.wav")
+    
+    # Load fine-tuned Whisper model
+    fine_tuned_processor, fine_tuned_model = load_fine_tuned_whisper(FINE_TUNED_MODEL_PATH)
+    
+    # Step 1: Transcribe the reference audio for voice cloning using fine-tuned model
+    print("Transcribing with fine-tuned Whisper model...")
+    fluent_text = transcribe_with_fine_tuned_whisper(fine_tuned_processor, fine_tuned_model, reference_audio)
+    print(f"Fine-tuned transcription (fluent): {fluent_text}")
+    
+    # Step 2: For comparison, also get standard Whisper transcription
+    standard_whisper = setup_whisper("base")
+    standard_text = transcribe_audio(standard_whisper, reference_audio)
+    print(f"Standard Whisper transcription: {standard_text}")
+    
+    # For F5TTS, we'll use the fluent (fine-tuned) transcription as reference
+    # ref_text = fluent_text
+    ref_text = ' ' + fluent_text.strip().rstrip('.') + '.'
+    # ref_text = standard_text #this is using the base model transcription...
+
+    # df = pd.read_csv(REF_CSV) #takes the actual stuttering csv for reference
+    # ref_text = ' '.join(df['word'].astype(str)).strip().rstrip('.') + '.'
+    
+    # Determine text to generate
+    # gen_text = custom_text if custom_text else ref_text #THIS NEEDS TO CHANGE BASED ON MODEL 
+    gen_text = ' ' + fluent_text.strip().rstrip('.') + '.' #uses the fluent transcription for generating
+    if custom_text:
+        print(f"Using custom text: {gen_text}")
+    else:
+        print(f"Using fluent transcription for generation: {gen_text}")
+    
+    # Run F5TTS for voice cloning
+    print("Running F5TTS...")
+    cmd = [
+        "f5-tts_infer-cli",
+        "--model", "F5TTS_v1_Base",  # or E2TTS_Base
+        "--ref_audio", reference_audio,
+        "--ref_text", ref_text,  
+        "--gen_text", gen_text, # Using fluent transcription
+        "--output_file", output_file
+        # "--speed", "0.85" 
+    ]
+    
+    print(f"Command: {' '.join(cmd)}")
+    
     try:
-        # Step 1: Transcribe the reference audio for voice cloning
-        # We use standard Whisper for this to get the actual spoken content
-        standard_whisper = setup_whisper("small")
-        ref_text = transcribe_audio(standard_whisper, reference_audio)
-        
-        # Step 2: Generate fluent text from the same audio using fine-tuned model
-        # This is the key optimization - we use our stuttering-aware model
-        fluent_text = transcribe_audio(fine_tuned_whisper_model, reference_audio)
-        
-        # Step 3: Run F5TTS to generate speech with cloned voice saying the fluent text
-        cmd = [
-            "f5-tts_infer-cli",
-            "--model", "F5TTS_v1_Base",
-            "--ref_audio", reference_audio,
-            "--ref_text", ref_text,
-            "--gen_text", fluent_text,
-            "--output", output_path
-        ]
-        
         subprocess.run(cmd, check=True)
-        
-        return output_path, fluent_text
+        print(f"Voice cloning successful! Output saved to: {output_file}")
+        return output_file
     except Exception as e:
-        print(f"Error generating speech: {e}")
-        return None, None
+        print(f"Error during voice cloning: {e}")
+        return None
+
+def main():
+    # Run the test with hardcoded parameters
+
+    AUDIO_FILE_WITH_SILENCE = append_silence_to_audio(FILE_PREFIX)
+
+    output_path = test_voice_cloning(
+        reference_audio=AUDIO_FILE_WITH_SILENCE,
+        output_file=OUTPUT_FILE
+    )
+
+    # output_path = test_voice_cloning(
+    #     reference_audio=AUDIO_FILE,
+    #     output_file=OUTPUT_FILE
+    # )
     
-    # def clone_voice_and_generate_speech(reference_audio, text_to_speak, output_path="output.wav"):
-#     """
-#     Clone a voice from a reference audio file and generate speech.
-    
-#     Args:
-#         reference_audio: Path to the reference audio file for voice cloning
-#         text_to_speak: Text to convert to speech
-#         output_path: Path to save the generated audio
-    
-#     Returns:
-#         Path to the generated audio file
-#     """
-#     # Use F5TTS CLI tool to generate speech
-#     try:
-#         # Transcribe the reference audio to get the text
-#         whisper_model = setup_whisper("small")
-#         ref_text = transcribe_audio(whisper_model, reference_audio)
-        
-#         # Run F5TTS to generate speech with cloned voice
-#         cmd = [
-#             "f5-tts_infer-cli",
-#             "--model", "F5TTS_v1_Base",
-#             "--ref_audio", reference_audio,
-#             "--ref_text", ref_text,
-#             "--gen_text", text_to_speak,
-#             "--output", output_path
-#         ]
-        
-#         subprocess.run(cmd, check=True)
-        
-#         return output_path
-#     except Exception as e:
-#         print(f"Error generating speech: {e}")
-#         return None
+    if output_path:
+        print(f"\nTest completed successfully. Generated file: {output_path}")
+    else:
+        print("\nTest failed.")
+
+
+if __name__ == "__main__":
+    main()
