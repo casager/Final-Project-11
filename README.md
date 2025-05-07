@@ -3,7 +3,7 @@
 ## Overview  
 This repository contains the final project for the Deep Learning course. The project introduces **MyFluentEcho**, a system designed to assist people who stutter by converting disfluent speech into **fluent audio output**, while preserving the original speaker's voice characteristics. Rather than building a TTS system from scratch, this project focuses on **fine-tuning OpenAI’s Whisper model** for stuttered speech recognition and using **F5TTS** (Fast, Few-shot, Fine-tunable Text-to-Speech) for voice cloning.
 
-The system provides an alternative to traditional Delayed Auditory Feedback (DAF) by generating fluent speech from real-time input, enabling natural and personalized auditory feedback for users who stutter.
+The system provides an alternative to traditional Delayed Auditory Feedback (DAF) by generating fluent speech from stuttered input speech, enabling natural and personalized auditory feedback for users who stutter.
 
 ---
 
