@@ -1,0 +1,692 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Fine-tuning Whisper for Stuttering Speech\n",
+    "\n",
+    "This notebook demonstrates how to fine-tune the OpenAI Whisper model on the timestamped FluencyBank dataset, which contains stuttered speech. The process includes:\n",
+    "\n",
+    "1. Loading and preprocessing the CSV and audio data\n",
+    "2. Creating training and testing splits\n",
+    "3. Evaluating the base Whisper model's performance on stuttered speech\n",
+    "4. Fine-tuning Whisper using transfer learning\n",
+    "5. Evaluating the fine-tuned model"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Setup and Dependencies\n",
+    "\n",
+    "First, we need to install the necessary libraries."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Install required packages\n",
+    "!pip install openai-whisper\n",
+    "!pip install transformers\n",
+    "!pip install datasets\n",
+    "!pip install evaluate\n",
+    "!pip install librosa\n",
+    "!pip install jiwer\n",
+    "!pip install accelerate\n",
+    "!pip install soundfile\n",
+    "!pip install tqdm"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "import glob\n",
+    "import json\n",
+    "import random\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import librosa\n",
+    "import soundfile as sf\n",
+    "import whisper\n",
+    "import torch\n",
+    "from tqdm.notebook import tqdm\n",
+    "from transformers import WhisperProcessor, WhisperForConditionalGeneration\n",
+    "from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments\n",
+    "from datasets import Dataset, Audio\n",
+    "from jiwer import wer\n",
+    "\n",
+    "# Set random seed for reproducibility\n",
+    "random.seed(42)\n",
+    "np.random.seed(42)\n",
+    "torch.manual_seed(42)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Data Loading and Preprocessing\n",
+    "\n",
+    "First, let's load the CSV files and process them to create a dataset with audio segments and their corresponding transcriptions."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Paths to data\n",
+    "csv_dir = os.path.expanduser(\"~/TimeStamped/cleaned_csvs\")\n",
+    "audio_dir = os.path.expanduser(\"~/TimeStamped-wav/combined_wavs\")\n",
+    "\n",
+    "# Get all CSV files\n",
+    "csv_files = glob.glob(os.path.join(csv_dir, \"*.csv\"))\n",
+    "print(f\"Found {len(csv_files)} CSV files.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Function to extract segments from the CSV files\n",
+    "def extract_segments_from_csv(csv_file):\n",
+    "    df = pd.read_csv(csv_file)\n",
+    "    segments = []\n",
+    "    \n",
+    "    # Group by segid to process each segment separately\n",
+    "    for segid, group in df.groupby('segid'):\n",
+    "        speaker_id = segid.split('_')[0]  # Extract speaker ID from segid\n",
+    "        wav_file = os.path.join(audio_dir, f\"{speaker_id}.wav\")\n",
+    "        \n",
+    "        if not os.path.exists(wav_file):\n",
+    "            print(f\"Warning: Audio file {wav_file} not found. Skipping segment {segid}.\")\n",
+    "            continue\n",
+    "        \n",
+    "        # Get the start and end times for the entire segment\n",
+    "        start_time = group['wordstart'].min()\n",
+    "        end_time = group['wordend'].max()\n",
+    "        \n",
+    "        # Collect all words in order\n",
+    "        words = []\n",
+    "        for _, row in group.sort_values('wordstart').iterrows():\n",
+    "            words.append(row['word'])\n",
+    "        \n",
+    "        # Create the transcript by joining all words with spaces\n",
+    "        transcript = ' '.join(words)\n",
+    "        \n",
+    "        # Check if any stuttering markers are present\n",
+    "        has_stutter = any(group['fp'] == 1) or any(group['rp'] == 1) or any(group['rv'] == 1) or any(group['pw'] == 1)\n",
+    "        \n",
+    "        segments.append({\n",
+    "            'segid': segid,\n",
+    "            'wav_file': wav_file,\n",
+    "            'start_time': start_time,\n",
+    "            'end_time': end_time,\n",
+    "            'transcript': transcript,\n",
+    "            'has_stutter': has_stutter\n",
+    "        })\n",
+    "    \n",
+    "    return segments"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Extract segments from all CSV files\n",
+    "all_segments = []\n",
+    "for csv_file in tqdm(csv_files, desc=\"Processing CSV files\"):\n",
+    "    segments = extract_segments_from_csv(csv_file)\n",
+    "    all_segments.extend(segments)\n",
+    "\n",
+    "print(f\"Total segments extracted: {len(all_segments)}\")\n",
+    "\n",
+    "# Display sample segments\n",
+    "print(\"\\nSample segments:\")\n",
+    "for segment in all_segments[:3]:\n",
+    "    print(f\"Segment ID: {segment['segid']}\")\n",
+    "    print(f\"WAV file: {segment['wav_file']}\")\n",
+    "    print(f\"Time range: {segment['start_time']} - {segment['end_time']} seconds\")\n",
+    "    print(f\"Transcript: {segment['transcript']}\")\n",
+    "    print(f\"Has stutter: {segment['has_stutter']}\")\n",
+    "    print(\"---\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Creating Audio Segments\n",
+    "\n",
+    "Now, let's extract the audio segments from the WAV files based on the start and end times."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Create a directory to store the audio segments\n",
+    "output_dir = \"processed_segments\"\n",
+    "os.makedirs(output_dir, exist_ok=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Function to extract and save audio segments\n",
+    "def extract_audio_segments(segments, output_dir):\n",
+    "    processed_segments = []\n",
+    "    \n",
+    "    for segment in tqdm(segments, desc=\"Extracting audio segments\"):\n",
+    "        try:\n",
+    "            # Load the audio file\n",
+    "            audio, sr = librosa.load(segment['wav_file'], sr=16000, offset=segment['start_time'], \n",
+    "                                     duration=segment['end_time'] - segment['start_time'])\n",
+    "            \n",
+    "            # Apply some basic noise reduction (optional)\n",
+    "            # This is a simple approach; more sophisticated methods can be used\n",
+    "            if len(audio) > 0:\n",
+    "                # Normalize audio\n",
+    "                audio = audio / np.max(np.abs(audio))\n",
+    "            \n",
+    "            # Skip if the segment is too short\n",
+    "            if len(audio) < 0.1 * sr:  # Less than 0.1 seconds\n",
+    "                continue\n",
+    "            \n",
+    "            # Save the audio segment\n",
+    "            output_file = os.path.join(output_dir, f\"{segment['segid']}.wav\")\n",
+    "            sf.write(output_file, audio, sr)\n",
+    "            \n",
+    "            # Add the output file path to the segment info\n",
+    "            segment_info = segment.copy()\n",
+    "            segment_info['audio_path'] = output_file\n",
+    "            processed_segments.append(segment_info)\n",
+    "            \n",
+    "        except Exception as e:\n",
+    "            print(f\"Error processing segment {segment['segid']}: {e}\")\n",
+    "    \n",
+    "    return processed_segments"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Extract audio segments\n",
+    "processed_segments = extract_audio_segments(all_segments, output_dir)\n",
+    "print(f\"Total processed segments: {len(processed_segments)}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Creating Train and Test Splits\n",
+    "\n",
+    "Next, let's split the data into training and testing sets."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Get unique speaker IDs\n",
+    "speaker_ids = set()\n",
+    "for segment in processed_segments:\n",
+    "    speaker_id = segment['segid'].split('_')[0]\n",
+    "    speaker_ids.add(speaker_id)\n",
+    "\n",
+    "speaker_ids = list(speaker_ids)\n",
+    "print(f\"Found {len(speaker_ids)} unique speakers.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Split speakers into train and test sets (80% train, 20% test)\n",
+    "random.shuffle(speaker_ids)\n",
+    "test_speaker_count = max(1, int(len(speaker_ids) * 0.2))\n",
+    "test_speakers = speaker_ids[:test_speaker_count]\n",
+    "train_speakers = speaker_ids[test_speaker_count:]\n",
+    "\n",
+    "print(f\"Test speakers: {test_speakers} ({len(test_speakers)} speakers)\")\n",
+    "print(f\"Train speakers: {train_speakers} ({len(train_speakers)} speakers)\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Split segments into train and test sets based on speaker ID\n",
+    "train_segments = []\n",
+    "test_segments = []\n",
+    "\n",
+    "for segment in processed_segments:\n",
+    "    speaker_id = segment['segid'].split('_')[0]\n",
+    "    if speaker_id in test_speakers:\n",
+    "        test_segments.append(segment)\n",
+    "    else:\n",
+    "        train_segments.append(segment)\n",
+    "\n",
+    "print(f\"Train segments: {len(train_segments)}\")\n",
+    "print(f\"Test segments: {len(test_segments)}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Save the split information for later reference\n",
+    "split_info = {\n",
+    "    'train_speakers': train_speakers,\n",
+    "    'test_speakers': test_speakers,\n",
+    "    'train_count': len(train_segments),\n",
+    "    'test_count': len(test_segments)\n",
+    "}\n",
+    "\n",
+    "with open('data_split_info.json', 'w') as f:\n",
+    "    json.dump(split_info, f, indent=2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Prepare Datasets for HuggingFace\n",
+    "\n",
+    "Now, let's prepare the data for training with the HuggingFace Transformers library."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Function to prepare the dataset for HuggingFace\n",
+    "def prepare_dataset(segments):\n",
+    "    data = {\n",
+    "        'audio': [],\n",
+    "        'text': []\n",
+    "    }\n",
+    "    \n",
+    "    for segment in segments:\n",
+    "        data['audio'].append(segment['audio_path'])\n",
+    "        data['text'].append(segment['transcript'])\n",
+    "    \n",
+    "    return data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Prepare the train and test datasets\n",
+    "train_data = prepare_dataset(train_segments)\n",
+    "test_data = prepare_dataset(test_segments)\n",
+    "\n",
+    "# Create HuggingFace datasets\n",
+    "train_dataset = Dataset.from_dict(train_data)\n",
+    "test_dataset = Dataset.from_dict(test_data)\n",
+    "\n",
+    "# Add audio loading capability\n",
+    "train_dataset = train_dataset.cast_column(\"audio\", Audio(sampling_rate=16000))\n",
+    "test_dataset = test_dataset.cast_column(\"audio\", Audio(sampling_rate=16000))\n",
+    "\n",
+    "print(f\"Train dataset: {train_dataset}\")\n",
+    "print(f\"Test dataset: {test_dataset}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Evaluate Base Whisper Model\n",
+    "\n",
+    "Let's first evaluate the base Whisper model on our test set to establish a baseline performance."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Function to evaluate the base Whisper model\n",
+    "def evaluate_base_whisper(test_dataset, model_size=\"base\"):\n",
+    "    # Load the Whisper model\n",
+    "    model = whisper.load_model(model_size)\n",
+    "    print(f\"Loaded Whisper {model_size} model.\")\n",
+    "    \n",
+    "    # Extract audio paths and transcripts from the dataset\n",
+    "    audio_paths = test_dataset['audio']\n",
+    "    references = test_dataset['text']\n",
+    "    \n",
+    "    hypotheses = []\n",
+    "    \n",
+    "    # Process each audio file\n",
+    "    for idx, audio_path in enumerate(tqdm(audio_paths, desc=\"Evaluating base Whisper\")):\n",
+    "        try:\n",
+    "            # Get the actual file path from the dataset info\n",
+    "            audio_file = audio_path['path'] if isinstance(audio_path, dict) else audio_path\n",
+    "            \n",
+    "            # Transcribe the audio\n",
+    "            result = model.transcribe(audio_file)\n",
+    "            \n",
+    "            # Get the transcription\n",
+    "            transcription = result[\"text\"].strip()\n",
+    "            hypotheses.append(transcription)\n",
+    "            \n",
+    "            # Print progress every 10 files\n",
+    "            if (idx + 1) % 10 == 0:\n",
+    "                print(f\"Processed {idx + 1}/{len(audio_paths)} files\")\n",
+    "                print(f\"Reference: {references[idx]}\")\n",
+    "                print(f\"Hypothesis: {transcription}\")\n",
+    "                print(\"---\")\n",
+    "                \n",
+    "        except Exception as e:\n",
+    "            print(f\"Error processing file {audio_file}: {e}\")\n",
+    "            hypotheses.append(\"\")\n",
+    "    \n",
+    "    # Calculate WER\n",
+    "    error_rate = wer(references, hypotheses)\n",
+    "    \n",
+    "    # Save results\n",
+    "    results = {\n",
+    "        'references': references,\n",
+    "        'hypotheses': hypotheses,\n",
+    "        'wer': error_rate\n",
+    "    }\n",
+    "    \n",
+    "    with open(f'base_whisper_{model_size}_results.json', 'w') as f:\n",
+    "        json.dump(results, f, indent=2)\n",
+    "    \n",
+    "    return error_rate, results"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Evaluate the base Whisper model\n",
+    "base_wer, base_results = evaluate_base_whisper(test_dataset, model_size=\"base\")\n",
+    "print(f\"Base Whisper WER: {base_wer:.4f}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Fine-tune Whisper\n",
+    "\n",
+    "Now, let's fine-tune the Whisper model on our stuttering speech dataset using the HuggingFace Transformers library."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Load the Whisper processor and model for fine-tuning\n",
+    "model_id = \"openai/whisper-base\"\n",
+    "processor = WhisperProcessor.from_pretrained(model_id)\n",
+    "model = WhisperForConditionalGeneration.from_pretrained(model_id)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Function to prepare the dataset for fine-tuning\n",
+    "def prepare_dataset_for_finetuning(dataset, processor):\n",
+    "    # Define a preprocessing function\n",
+    "    def prepare_example(example):\n",
+    "        # Load and resample the audio data\n",
+    "        audio = example[\"audio\"]\n",
+    "        \n",
+    "        # Process the audio input\n",
+    "        input_features = processor(audio[\"array\"], sampling_rate=audio[\"sampling_rate\"], return_tensors=\"pt\").input_features[0]\n",
+    "        \n",
+    "        # Process the text output\n",
+    "        example[\"labels\"] = processor(text=example[\"text\"]).input_ids\n",
+    "        example[\"input_features\"] = input_features\n",
+    "        \n",
+    "        return example\n",
+    "    \n",
+    "    # Process the dataset\n",
+    "    processed_dataset = dataset.map(prepare_example, remove_columns=[\"audio\", \"text\"])\n",
+    "    \n",
+    "    return processed_dataset"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Prepare the datasets for fine-tuning\n",
+    "print(\"Preparing train dataset...\")\n",
+    "processed_train_dataset = prepare_dataset_for_finetuning(train_dataset, processor)\n",
+    "\n",
+    "print(\"Preparing test dataset...\")\n",
+    "processed_test_dataset = prepare_dataset_for_finetuning(test_dataset, processor)\n",
+    "\n",
+    "print(f\"Processed train dataset: {processed_train_dataset}\")\n",
+    "print(f\"Processed test dataset: {processed_test_dataset}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Set up training arguments\n",
+    "training_args = Seq2SeqTrainingArguments(\n",
+    "    output_dir=\"./whisper-fine-tuned-stuttering\",\n",
+    "    per_device_train_batch_size=16,\n",
+    "    gradient_accumulation_steps=2,\n",
+    "    learning_rate=1e-5,\n",
+    "    warmup_steps=500,\n",
+    "    max_steps=4000,\n",
+    "    gradient_checkpointing=True,\n",
+    "    fp16=True,\n",
+    "    evaluation_strategy=\"steps\",\n",
+    "    eval_steps=500,\n",
+    "    save_strategy=\"steps\",\n",
+    "    save_steps=500,\n",
+    "    logging_steps=50,\n",
+    "    report_to=[\"tensorboard\"],\n",
+    "    load_best_model_at_end=True,\n",
+    "    metric_for_best_model=\"wer\",\n",
+    "    greater_is_better=False,\n",
+    "    push_to_hub=False,\n",
+    ")\n",
+    "\n",
+    "# Define the data collator\n",
+    "data_collator = lambda x: {\"input_features\": torch.stack([item[\"input_features\"] for item in x]),\n",
+    "                           \"labels\": torch.tensor([item[\"labels\"] for item in x])}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Define the compute metric function\n",
+    "def compute_metrics(pred):\n",
+    "    pred_ids = pred.predictions\n",
+    "    label_ids = pred.label_ids\n",
+    "    \n",
+    "    # Replace -100 with the pad_token_id\n",
+    "    label_ids[label_ids == -100] = processor.tokenizer.pad_token_id\n",
+    "    \n",
+    "    # Convert ids to strings\n",
+    "    pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)\n",
+    "    label_str = processor.batch_decode(label_ids, skip_special_tokens=True)\n",
+    "    \n",
+    "    # Compute WER\n",
+    "    error = wer(label_str, pred_str)\n",
+    "    \n",
+    "    return {\"wer\": error}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Initialize the trainer\n",
+    "trainer = Seq2SeqTrainer(\n",
+    "    model=model,\n",
+    "    args=training_args,\n",
+    "    train_dataset=processed_train_dataset,\n",
+    "    eval_dataset=processed_test_dataset,\n",
+    "    data_collator=data_collator,\n",
+    "    compute_metrics=compute_metrics,\n",
+    "    tokenizer=processor.feature_extractor,\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Train the model\n",
+    "trainer.train()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Save the fine-tuned model\n",
+    "trainer.save_model(\"./whisper-fine-tuned-stuttering-final\")\n",
+    "processor.save_pretrained(\"./whisper-fine-tuned-stuttering-final\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Evaluate Fine-tuned Model\n",
+    "\n",
+    "Now, let's evaluate the fine-tuned model on our test set to see how it performs compared to the base model."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Load the fine-tuned model\n",
+    "fine_tuned_processor = WhisperProcessor.from_pretrained(\"./whisper-fine-tuned-stuttering-final\")\n",
+    "fine_tuned_model = WhisperForConditionalGeneration.from_pretrained(\"./whisper-fine-tuned-stuttering-final\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Function to evaluate the fine-tuned model\n",
+    "def evaluate_fine_tuned_whisper(test_dataset, processor, model):\n",
+    "    # Extract audio paths and transcripts from the dataset\n",
+    "    audio_paths = test_dataset['audio']\n",
+    "    references = test_dataset['text']\n",
+    "    \n",
+    "    hypotheses = []\n",
+    "    \n",
+    "    # Process each audio file\n",
+    "    for idx, audio_path in enumerate(tqdm(audio_paths, desc=\"Evaluating fine-tuned Whisper\")):\n",
+    "        try:\n",
+    "            # Get the actual file path from the dataset info\n",
+    "            audio_file = audio_path['path'] if isinstance(audio_path, dict) else audio_path\n",
+    "            \n",
+    "            # Load audio\n",
+    "            audio, sr = librosa.load(audio_file, sr=16000)\n",
+    "            \n",
+    "            # Process audio for input\n",
+    "            input_features = processor(audio, sampling_rate=sr, return_tensors=\"pt\").input_features\n",
+    "            \n",
+    "            # Generate transcription\n",
+    "            predicted_ids = model.generate(input_features)\n",
+    "            transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]\n",
+    "            \n",
+    "            hypotheses.append(transcription)\n",
+    "            \n",
+    "            # Print progress every 10 files\n",
+    "            if (idx + 1) % 10 == 0:\n",
+    "                print(f\"Processed {idx + 1}/{len(audio_paths)} files\")\n",
+    "                print(f\"Reference: {references[idx]}\")\n",
+    "                print(f\"Hypothesis: {transcription}\")\n",
+    "                print(\"---\")\n",
+    "                \n",
+    "        except Exception as e:\n",
+    "            print(f\"Error processing file {audio_file}: {e}\")\n",
+    "            hypotheses.append(\"\")\n",
+    "    \n",
+    "    # Calculate WER\n",
+    "    error_rate = wer(references, hypotheses)\n",
+    "    \n",
+    "    # Save results\n",
+    "    results = {\n",
+    "        'references': references,\n",
+    "        'hypotheses': hypotheses,\n",
+    "        'wer': error_rate\n",
+    "    }\n",
+    "    \n",
+    "    with open('fine_tuned_whisper_results.json', 'w') as f:\n",
+    "        json.dump(results, f, indent=2)\n",
+    "    \n",
+    "    return error_rate, results"
+   ]
+}
+ ]
+}
