@@ -34,7 +34,7 @@ Python script version of the Jupyter notebook for running the fine-tuning proces
 Tests the full pipeline by integrating both the **pre-trained** and **fine-tuned** Whisper models with the F5-TTS system to generate fluent audio output.
 
 #### `whisper_utils.py`
-Utility functions for initializing and loading Whisper models, performing transcription, and supporting integration with F5-TTS audio synthesis.
+Utility functions for initializing and loading Whisper models, performing transcription, and supporting integration with F5-TTS audio synthesis (used in F5-TTS_init.py).
 
 ---
 
