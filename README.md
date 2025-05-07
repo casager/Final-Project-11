@@ -1,35 +1,85 @@
-# Final Project - Text-to-Speech Synthesis
+# Final Project – MyFluentEcho: Fluent Speech from Stuttered Input
 
-## Overview
-This repository contains the work for the **Final Project** in our deep learning course. The project aims to develop a custom **Text-to-Speech (TTS)** model. The focus is on training a **Text-to-Spectrogram Conversion Model** using a **combination of LSTM and CNN** networks to generate mel-spectrograms from text input. A pre-built vocoder is used on the backend for generating audio from the spectrograms.
+## Overview  
+This repository contains the final project for the Deep Learning course. The project introduces **MyFluentEcho**, a system designed to assist people who stutter by converting disfluent speech into **fluent audio output**, while preserving the original speaker's voice characteristics. Rather than building a TTS system from scratch, this project focuses on **fine-tuning OpenAI’s Whisper model** for stuttered speech recognition and using **F5TTS** (Fast, Few-shot, Fine-tunable Text-to-Speech) for voice cloning.
+
+The system provides an alternative to traditional Delayed Auditory Feedback (DAF) by generating fluent speech from real-time input, enabling natural and personalized auditory feedback for users who stutter.
+
+---
 
 ## Repository Structure
 
-The repository is organized as follows:
 
 ```
-Final-Project-11/
+MyFluentEcho/
 │
 ├── Proposal/
-│   └── Proposal document outlining the project goals, methods, and approach.
+│   └── Initial project proposal (based on earlier TTS idea).
 │
 ├── Final-Group-Project-Report/
-│   └── The final group report summarizing the methodology, results, and conclusions.
+│   └── Comprehensive report describing dataset, model architecture, training process, and results.
 │
 ├── Final-Presentation/
-│   └── Final presentation slides.
+│   └── Powerpoint PDF summarizing the final results and system design.
 │
 └── Code/
-    └── The code for training the Text-to-Spectrogram model, including scripts for training, preprocessing, and evaluation.
+    ├── Audio-Samples/
+    │   └── Samples used for evaluation of the sytem
+    ├── data_splits/
+    │   └── Train, test, validation splits for each run
+    ├── logs/
+    │   └── Storage of previous training data
+    ├── model_results/
+    │   └── Storage of previous model results in JSON format (not actual models)
+    └── Code files explained in folder...
 
 ```
+
+---
 
 ## Folder Descriptions
 
-- **Proposal/**: Contains the project proposal, where the problem, approach, and methodology are described.
-- **Final-Group-Project-Report/**: Contains the final report summarizing the work done by the group, including model architecture, results, and conclusions.
-- **Final-Presentation/**: Contains the slides for the final presentation given at the end of the course.
-- **Code/**: Contains the code for training the Text-to-Spectrogram model, including scripts for data preprocessing, model training, and evaluation.
+- **Proposal/**: Contains the original project proposal (now outdated).
+- **Final-Group-Project-Report/**: The final report detailing all aspects of the MyFluentEcho system.
+- **Final-Presentation/**: Final slides used for presenting the project.
+- **Code/**: All scripts for dataset preparation, Whisper fine-tuning, evaluation, and TTS synthesis using F5TTS.
+
+---
+
+## How the System Works
+
+1. **Stuttered Audio Input**  
+   - Short clips of disfluent speech are input to the system.
+
+2. **Fine-Tuned Whisper Model**  
+   - A customized Whisper model, fine-tuned on the **FluencyBank Timestamped dataset**, transcribes the stuttered audio while correcting disfluencies like repetitions and prolongations.
+
+3. **F5TTS Voice Cloning**  
+   - The corrected text is passed to F5TTS, which synthesizes fluent audio while preserving the speaker’s original voice traits (e.g., accent, pitch, intonation).
+
+4. **Fluent Output**  
+   - The user hears a fluent version of their own voice, offering a modern, deep learning-based alternative to traditional DAF techniques.
+
+---
+
+## Performance Evaluation
+
+- **Word Error Rate (WER)**: Used to evaluate the Whisper model’s transcription accuracy before and after fine-tuning.
+- **Qualitative Analysis**: Specific transcription comparisons show the model’s improvement in disfluency handling.
+- **Subjective Listening Tests**: Used to validate that the fluent speech output sounds natural and matches the speaker’s identity.
+
+---
+
+## Requirements
+
+The main libraries and tools used include:
+
+- `transformers` (HuggingFace)
+- `datasets` (HuggingFace)
+- `torchaudio`, `librosa`
+- `OpenAI Whisper` ([Whisper Github Repo](https://github.com/openai/whisper))
+- `F5TTS` ([F5TTS GitHub Repo](https://github.com/SWivid/F5-TTS))
+- `PyTorch`, `TensorBoard`
 
 <!--
 ## How to Use the Code
