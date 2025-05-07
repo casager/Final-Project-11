@@ -597,57 +597,6 @@ trainer.save_model(f"./whisper-fine-tuned-stuttering-final-{TRAIN_NUM}")
 processor.save_pretrained(f"./whisper-fine-tuned-stuttering-final-{TRAIN_NUM}")
 
 # %% [markdown]
-# ## Visualize Training Progress
-# 
-# Let's visualize the training metrics to better understand the model's learning progress.
-
-# %%
-# import matplotlib.pyplot as plt
-# import pandas as pd
-
-# # Load training logs
-# training_logs = trainer.state.log_history
-
-# # Convert to DataFrame for easier processing
-# df_logs = pd.DataFrame(training_logs)
-
-# # Create figure with subplots
-# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-
-# # Plot training loss
-# train_loss = df_logs[df_logs['loss'].notna()]
-# ax1.plot(train_loss['epoch'], train_loss['loss'], 'b-', label='Training Loss')
-# ax1.set_xlabel('Epoch')
-# ax1.set_ylabel('Loss')
-# ax1.set_title('Training Loss Over Time')
-# ax1.legend()
-# ax1.grid(True)
-
-# # Plot evaluation metrics
-# eval_metrics = df_logs[df_logs['eval_loss'].notna()]
-# ax2.plot(eval_metrics['epoch'], eval_metrics['eval_loss'], 'r-', label='Validation Loss')
-# ax2.plot(eval_metrics['epoch'], eval_metrics['eval_wer'], 'g-', label='WER')
-# ax2.set_xlabel('Epoch')
-# ax2.set_ylabel('Metric Value')
-# ax2.set_title('Validation Loss and WER Over Time')
-# ax2.legend()
-# ax2.grid(True)
-
-# plt.tight_layout()
-# plt.savefig('training_metrics.png', dpi=300, bbox_inches='tight')
-# plt.show()
-
-# # Print final metrics
-# final_train_loss = train_loss['loss'].iloc[-1]
-# final_eval_loss = eval_metrics['eval_loss'].iloc[-1]
-# final_wer = eval_metrics['eval_wer'].iloc[-1]
-
-# print(f"\nFinal Training Metrics:")
-# print(f"Training Loss: {final_train_loss:.4f}")
-# print(f"Validation Loss: {final_eval_loss:.4f}")
-# print(f"Validation WER: {final_wer:.4f}")
-
-# %% [markdown]
 # ## Evaluate Fine-tuned Model
 # 
 # Now, let's evaluate the fine-tuned model on our test set to see how it performs compared to the base model.
